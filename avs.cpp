@@ -190,9 +190,10 @@ avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_
 
 	// Sample the field
 	avs_brick_t* brick = &avs->bricks[node->brick_id];
-	uint32_t ix = static_cast<uint32_t>(x);
-	uint32_t iy = static_cast<uint32_t>(y);
-	uint32_t iz = static_cast<uint32_t>(z);
+
+	uint32_t ix = static_cast<uint32_t>(x / AVS_BRICK_SIDE);
+	uint32_t iy = static_cast<uint32_t>(y / AVS_BRICK_SIDE);
+	uint32_t iz = static_cast<uint32_t>(z / AVS_BRICK_SIDE);
 	// TODO: Don't use nearest
 	result.field_val = brick->data[ix + iy * AVS_BRICK_SIDE + iz * AVS_BRICK_SIDE * AVS_BRICK_SIDE];
 
