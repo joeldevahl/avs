@@ -40,6 +40,14 @@ struct avs_t
 	float min_dist;
 };
 
+static bool avs_node_has_children(avs_node_t* node)
+{
+	bool res = false;
+	for(int i = 0; i < 8; ++i)
+		res |= node->child_id[i] == AVS_INVALID_INDEX;
+	return res;
+}
+
 static void avs_prop_down(avs_t* avs, avs_node_t* node, int cid)
 {
 	assert(node->child_id[cid] != AVS_INVALID_INDEX);
@@ -139,4 +147,101 @@ avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs)
 void avs_destroy(avs_t* avs)
 {
 	delete avs;
+}
+
+avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_result_t* out_result)
+{
+	// Early out if we are outside root boundry
+	if(x < 0 || y < 0 || z < 0 || x >= avs->root_side || y >= avs->root_side || z >= avs->root_side)
+		return AVS_RESULT_OUTSIDE_FIELD;
+
+	// Set up result struct
+	avs_sample_result_t result = {};
+	result.x = x;
+	result.y = y;
+	result.z = z;
+
+	// Set up first iteration from root data
+	avs_node_t* node = &avs->nodes[avs->root_index];
+	float side = avs->root_side;
+	float half_side = side * 0.5f;
+
+	// Loop down until we find the leaf that contains the position
+	while(avs_node_has_children(node))
+	{
+		// Fid the octant that contains the position
+		int id = 0;
+		id |= (x >= half_side) ? 1 : 0;
+		id |= (y >= half_side) ? 2 : 0;
+		id |= (z >= half_side) ? 4 : 0;
+
+		// And make that out current node
+		node = &avs->nodes[node->child_id[id]];
+		side = half_side;
+		half_side = half_side * 0.5f;
+
+		// Modify position to be in local space of the new node
+		x = (id & 1) ? x - half_side : x;
+		y = (id & 2) ? y - half_side : y;
+		z = (id & 4) ? z - half_side : z;
+	}
+
+	// Sample the field
+	avs_brick_t* brick = &avs->bricks[node->brick_id];
+	uint32_t ix = static_cast<uint32_t>(x);
+	uint32_t iy = static_cast<uint32_t>(y);
+	uint32_t iz = static_cast<uint32_t>(z);
+	// TODO: Don't use nearest
+	result.field_val = brick->data[ix + iy * AVS_BRICK_SIDE + iz * AVS_BRICK_SIDE * AVS_BRICK_SIDE];
+
+	*out_result = result;
+	return AVS_RESULT_OK;
+}
+
+struct avs_work_pair_t
+{
+	avs_index_t index;
+	float x, y, z;
+	float side;
+};
+
+void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z, float radius)
+{
+	std::vector<avs_work_pair_t> work_stack; // TODO: we could have an array of all used nodes, their size and position and just churn through it. For now though let's do it this way
+
+	avs_work_pair_t root =
+	{
+		avs->root_index,
+		0.0f, 0.0f, 0.0f,
+		avs->root_side,
+	};
+	work_stack.push_back(root);
+
+	while(work_stack.size() != 0)
+	{
+		avs_work_pair_t work = work_stack.back();
+		work_stack.pop_back();
+
+		avs_node_t* node = &avs->nodes[work.index];
+		float side = work.side;
+		float half_side = side * 0.5f;
+
+		for(int i = 0; i < 8; ++i)
+		{
+			if(node->child_id[i] != AVS_INVALID_INDEX)
+			{
+				avs_work_pair_t child_work =
+				{
+					node->child_id[i],
+					(i & 1) ? work.x - half_side : work.x,
+					(i & 2) ? work.y - half_side : work.y,
+					(i & 4) ? work.z - half_side : work.z,
+					half_side,
+				};
+				work_stack.push_back(child_work);
+			}
+		}
+
+		// TODO: do the actual painting...
+	}
 }

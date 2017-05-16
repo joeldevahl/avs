@@ -12,5 +12,10 @@ int main(int argc, char** argv)
 	avs_create(&avs_create_info, &avs);
 	avs_destroy(avs);
 
+	avs_paint_sphere(avs, 512.0f, 512.0f, 512.0f, 256.0f);
+
+	avs_sample_result_t res = {};
+	avs_sample_point(avs, 512.0f, 512.0f, 512.0f, &res);
+
 	return 0;
 }
