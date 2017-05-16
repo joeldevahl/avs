@@ -196,9 +196,53 @@ avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_
 	uint32_t iz = static_cast<uint32_t>(z / AVS_BRICK_SIDE);
 	// TODO: Don't use nearest
 	result.field_val = brick->data[ix + iy * AVS_BRICK_SIDE + iz * AVS_BRICK_SIDE * AVS_BRICK_SIDE];
+	result.sample_step = side / AVS_BRICK_SIDE;
 
 	*out_result = result;
 	return AVS_RESULT_OK;
+}
+
+avs_result_t avs_trace_ray(avs_t* avs, float px, float py, float pz, float nx, float ny, float nz, float max_dist, avs_sample_result_t* out_result)
+{
+	// TODO: this is a super stupid implementation that just calls avs_sample point and traverses the whole tree every iteration!
+
+	float nl = sqrtf(nx*nx + ny*ny + nz*nz);
+	nx /= nl;
+	ny /= nl;
+	nz /= nl;
+
+	float traced_dist = 0.0f;
+	while(traced_dist < max_dist)
+	{
+		avs_sample_result_t result = {};
+		if(avs_sample_point(avs, px, py, pz, &result) == AVS_RESULT_OK)
+		{
+			float surf_dist = fabs(result.field_val);
+			if(surf_dist < result.sample_step) // TODO: stupid test here, we should iterate on a sub voxel level
+			{
+				*out_result = result;
+				return AVS_RESULT_OK;
+			}
+			else
+			{
+				
+				px += nx * surf_dist;
+				py += ny * surf_dist;
+				pz += nz * surf_dist;
+				traced_dist += surf_dist;
+			}
+		}
+		else
+		{
+			// We didn't hit anything, so just step max distance
+			px += nx * avs->max_dist;
+			py += ny * avs->max_dist;
+			pz += nz * avs->max_dist;
+			traced_dist += avs->max_dist;
+		}
+	}
+
+	return AVS_RESULT_OUTSIDE_FIELD;
 }
 
 struct avs_work_pair_t

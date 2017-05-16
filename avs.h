@@ -26,8 +26,11 @@ struct avs_sample_result_t
 	float z;
 
 	float field_val;
+	float sample_step;
 };
 
 avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_result_t* out_result);
+
+avs_result_t avs_trace_ray(avs_t* avs, float px, float py, float pz, float nx, float ny, float nz, float max_dist, avs_sample_result_t* out_result);
 
 void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z, float radius);

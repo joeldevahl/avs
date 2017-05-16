@@ -16,6 +16,9 @@ int main(int argc, char** argv)
 	avs_sample_result_t res = {};
 	avs_sample_point(avs, 512.0f, 512.0f, 512.0f, &res);
 
+	avs_sample_result_t res2 = {};
+	avs_trace_ray(avs, 0.0f, 512.0f, 512.0f, 1.0f, 0.0f, 0.0f, 1024.0f, &res2);
+
 	avs_destroy(avs);
 
 	return 0;
