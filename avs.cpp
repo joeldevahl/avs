@@ -4,6 +4,7 @@
 #include <vector>
 #include <stdint.h>
 #include <float.h>
+#include <math.h>
 
 #define AVS_MAX_LAYERS 8
 
@@ -42,6 +43,7 @@ struct avs_t
 
 static bool avs_node_has_children(avs_node_t* node)
 {
+	assert(node != nullptr);
 	bool res = false;
 	for(int i = 0; i < 8; ++i)
 		res |= node->child_id[i] == AVS_INVALID_INDEX;
@@ -242,6 +244,29 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 			}
 		}
 
-		// TODO: do the actual painting...
+		// Go over each sample in the brick and paint in the sphere
+		avs_brick_t* brick = &avs->bricks[node->brick_id];
+		uint32_t i = 0;
+		for(uint32_t iz = 0; iz < AVS_BRICK_SIDE; ++iz)
+		{
+			float z = work.z + static_cast<float>(iz) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+			float dz = z - center_z;
+			for(uint32_t iy = 0; iy < AVS_BRICK_SIDE; ++iy)
+			{
+				float y = work.y + static_cast<float>(iy) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+				float dy = y - center_y;
+				for(uint32_t ix = 0; ix < AVS_BRICK_SIDE; ++ix)
+				{
+					float x = work.x + static_cast<float>(ix) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+					float dx = x - center_x;
+
+					float val = sqrtf(dx*dx + dy*dy + dz*dz) - radius;
+					float sat_val = fmax(avs->min_dist, fmin(avs->max_dist, val));
+
+					brick->data[i] = fabs(sat_val) < fabs(brick->data[i]) ? sat_val : brick->data[i]; // TODO: is this really right?
+					++i;
+				}
+			}
+		}
 	}
 }
