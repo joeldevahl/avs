@@ -46,7 +46,7 @@ static bool avs_node_has_children(avs_node_t* node)
 	assert(node != nullptr);
 	bool res = false;
 	for(int i = 0; i < 8; ++i)
-		res |= node->child_id[i] == AVS_INVALID_INDEX;
+		res |= node->child_id[i] != AVS_INVALID_INDEX;
 	return res;
 }
 
@@ -171,7 +171,7 @@ avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_
 	// Loop down until we find the leaf that contains the position
 	while(avs_node_has_children(node))
 	{
-		// Fid the octant that contains the position
+		// Did the octant that contains the position
 		int id = 0;
 		id |= (x >= half_side) ? 1 : 0;
 		id |= (y >= half_side) ? 2 : 0;
