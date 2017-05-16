@@ -4,3 +4,11 @@ CMakeCache.txt
 cmake_install.cmake
 Makefile
 CMakeFiles
+avs.dir/
+*.sln
+*.db
+Win32/
+*.vcxproj
+*.filters
+Debug/
+*.opendb
