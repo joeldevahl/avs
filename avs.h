@@ -10,7 +10,6 @@ enum avs_result_t
 
 struct avs_create_info_t
 {
-	int initial_pool_size;
 	float root_size;
 	float saturation_distance;
 };
