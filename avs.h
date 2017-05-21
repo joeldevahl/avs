@@ -1,5 +1,6 @@
 #pragma once
 
+
 struct avs_t;
 
 enum avs_result_t
@@ -10,9 +11,10 @@ enum avs_result_t
 
 struct avs_create_info_t
 {
-	int initial_pool_size;
-	float root_size;
-	float saturation_distance;
+	float root_x;
+	float root_y;
+	float root_z;
+	float root_side;
 };
 
 avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs);

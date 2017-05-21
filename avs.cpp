@@ -1,45 +1,4 @@
-#include "avs.h"
-
-#include <cassert>
-#include <vector>
-#include <stdint.h>
-#include <float.h>
-#include <math.h>
-
-#define AVS_MAX_LAYERS 8
-
-typedef uint32_t avs_index_t;
-
-#define AVS_INVALID_INDEX UINT32_MAX
-
-struct avs_node_t
-{
-	avs_index_t child_id[8];
-	avs_index_t brick_id;
-};
-
-#define AVS_BRICK_SIDE 32
-#define AVS_BRICK_SIZE (AVS_BRICK_SIDE * AVS_BRICK_SIDE * AVS_BRICK_SIDE)
-
-struct avs_brick_t
-{
-	float data[AVS_BRICK_SIZE];
-};
-
-struct avs_t
-{
-	std::vector<avs_node_t> nodes;
-	std::vector<avs_index_t> free_nodes;
-
-	std::vector<avs_brick_t> bricks;
-	std::vector<avs_index_t> free_bricks;
-
-	avs_index_t root_index;
-	float root_side;
-
-	float max_dist;
-	float min_dist;
-};
+#include "avs_internal.h"
 
 static bool avs_node_has_children(avs_node_t* node)
 {
@@ -109,38 +68,87 @@ static void avs_flatten(avs_t* avs, avs_node_t* node)
 	}
 }
 
+static avs_index_t avs_alloc_node(avs_t* avs)
+{
+	if (avs->free_nodes.size() == 0)
+	{
+		size_t new_size = avs->node_pool_size > 0 ? avs->node_pool_size * 2 : 1024;
+		avs->nodes.resize(new_size);
+		for (size_t n = 0; n < new_size; ++n)
+			avs->free_nodes.push_back(n);
+		avs->node_pool_size = new_size;
+	}
+
+	avs_index_t index = avs->free_nodes.back();
+	avs->free_nodes.pop_back();
+
+	return index;
+}
+
+static void avs_free_node(avs_t* avs, avs_index_t index)
+{
+	avs->free_nodes.push_back(index);
+}
+
+static avs_node_t* avs_get_node(avs_t* avs, avs_index_t index)
+{
+	return &avs->nodes[index];
+}
+
+static void avs_node_init(avs_t* avs, avs_node_t* node)
+{
+	for(int i = 0; i < 8; ++i)
+		node->child_id[i] = AVS_INVALID_INDEX;
+	node->brick_id = AVS_INVALID_INDEX;
+}
+
+static avs_index_t avs_alloc_brick(avs_t* avs)
+{
+	if (avs->free_bricks.size() == 0)
+	{
+		size_t new_size = avs->brick_pool_size > 0 ? avs->brick_pool_size * 2 : 1024;
+		avs->bricks.resize(new_size);
+		for (size_t n = 0; n < new_size; ++n)
+			avs->free_bricks.push_back(n);
+		avs->brick_pool_size = new_size;
+	}
+	avs_index_t index = avs->free_bricks.back();
+	avs->free_bricks.pop_back();
+	return index;
+}
+
+static void avs_free_brick(avs_t* avs, avs_index_t index)
+{
+	avs->free_bricks.push_back(index);
+}
+
+static avs_brick_t* avs_get_brick(avs_t* avs, avs_index_t index)
+{
+	return &avs->bricks[index];
+}
+
+static void avs_brick_init(avs_t* avs, avs_brick_t* brick)
+{
+	for(int i = 0; i < AVS_BRICK_SIZE; ++i)
+		brick->data[i] = FLT_MAX;
+}
+
 avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs)
 {
 	avs_t* avs = new avs_t;
 
-	// initialize nodes and node free list
-	int initial_node_count = create_info->initial_pool_size;
-	avs->nodes.resize(initial_node_count);
-	for(int n = initial_node_count - 1; n >= 0; --n)
-		avs->free_nodes.push_back(n);
+	avs->root_index = avs_alloc_node(avs);
+	avs_node_t* node = avs_get_node(avs, avs->root_index);
+	avs_node_init(avs, node);
 
-	// initialize bricks and brick free list;
-	avs->bricks.resize(initial_node_count);
-	for(int b = initial_node_count - 1; b >= 0; --b)
-		avs->free_bricks.push_back(b);
+	node->brick_id = avs_alloc_brick(avs);
+	avs_brick_t* brick = avs_get_brick(avs, node->brick_id);
+	avs_brick_init(avs, brick);
 
-	// get first free node from the free list and add that as the root
-	avs->root_index = avs->free_nodes.back();
-	avs->free_nodes.pop_back();
-	avs->root_side = create_info->root_size;
-
-	avs->max_dist = create_info->saturation_distance;
-	avs->min_dist = -create_info->saturation_distance;
-
-	// initialize root node data
-	avs_node_t& node = avs->nodes[avs->root_index];
-	for(int i = 0; i < 8; ++i)
-		node.child_id[i] = AVS_INVALID_INDEX;
-	node.brick_id = avs->free_bricks.back();
-	avs->free_bricks.pop_back();
-	avs_brick_t& brick = avs->bricks[node.brick_id];
-	for(int i = 0; i < AVS_BRICK_SIZE; ++i)
-		brick.data[i] = avs->max_dist;
+	avs->root_origin.x = create_info->root_x;
+	avs->root_origin.y = create_info->root_y;
+	avs->root_origin.z = create_info->root_z;
+	avs->root_side = create_info->root_side;
 
 	*out_avs = avs;
 	return AVS_RESULT_OK;
@@ -234,11 +242,12 @@ avs_result_t avs_trace_ray(avs_t* avs, float px, float py, float pz, float nx, f
 		}
 		else
 		{
-			// We didn't hit anything, so just step max distance
-			px += nx * avs->max_dist;
-			py += ny * avs->max_dist;
-			pz += nz * avs->max_dist;
-			traced_dist += avs->max_dist;
+			// We didn't hit anything, so just step somewhat distance
+			// TODO: what distance is somewhat?
+			px += nx;
+			py += ny;
+			pz += nz;
+			traced_dist += 1.0f;
 		}
 	}
 
@@ -255,6 +264,8 @@ struct avs_work_pair_t
 void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z, float radius)
 {
 	std::vector<avs_work_pair_t> work_stack; // TODO: we could have an array of all used nodes, their size and position and just churn through it. For now though let's do it this way
+
+	int64_t min_x = static_cast<int64_t>(floorf(center_x - radius));
 
 	avs_work_pair_t root =
 	{
@@ -306,9 +317,8 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 					float dx = x - center_x;
 
 					float val = sqrtf(dx*dx + dy*dy + dz*dz) - radius;
-					float sat_val = fmax(avs->min_dist, fmin(avs->max_dist, val));
 
-					brick->data[i] = fabs(sat_val) < fabs(brick->data[i]) ? sat_val : brick->data[i]; // TODO: is this really right?
+					brick->data[i] = fabs(val) < fabs(brick->data[i]) ? val : brick->data[i]; // TODO: is this really right?
 					++i;
 				}
 			}
