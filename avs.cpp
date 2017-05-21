@@ -137,6 +137,9 @@ avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs)
 {
 	avs_t* avs = new avs_t;
 
+	avs->node_pool_size = 0;
+	avs->brick_pool_size = 0;
+
 	avs->root_index = avs_alloc_node(avs);
 	avs_node_t* node = avs_get_node(avs, avs->root_index);
 	avs_node_init(avs, node);
@@ -150,6 +153,8 @@ avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs)
 	avs->root_origin.z = create_info->root_z;
 	avs->root_side = create_info->root_side;
 
+	avs->expand_up = true;
+
 	*out_avs = avs;
 	return AVS_RESULT_OK;
 }
@@ -162,7 +167,7 @@ void avs_destroy(avs_t* avs)
 avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_result_t* out_result)
 {
 	// Early out if we are outside root boundry
-	if(x < 0 || y < 0 || z < 0 || x >= avs->root_side || y >= avs->root_side || z >= avs->root_side)
+	if(x < avs->root_origin.x || y < avs->root_origin.y || z < avs->root_origin.z || x >= avs->root_side || y >= avs->root_side || z >= avs->root_side)
 		return AVS_RESULT_OUTSIDE_FIELD;
 
 	// Set up result struct
@@ -179,14 +184,19 @@ avs_result_t avs_sample_point(avs_t* avs, float x, float y, float z, avs_sample_
 	// Loop down until we find the leaf that contains the position
 	while(avs_node_has_children(node))
 	{
-		// Did the octant that contains the position
+		// Find the octant that contains the position
 		int id = 0;
 		id |= (x >= half_side) ? 1 : 0;
 		id |= (y >= half_side) ? 2 : 0;
 		id |= (z >= half_side) ? 4 : 0;
 
-		// And make that out current node
-		node = &avs->nodes[node->child_id[id]];
+		// If that octand does not have a node we end the recursion here
+		avs_index_t child_id = node->child_id[id];
+		if(child_id == AVS_INVALID_INDEX)
+			break;
+
+		// Otherwize make the octants node that out current node
+		node = &avs->nodes[child_id];
 		side = half_side;
 		half_side = half_side * 0.5f;
 
@@ -233,7 +243,6 @@ avs_result_t avs_trace_ray(avs_t* avs, float px, float py, float pz, float nx, f
 			}
 			else
 			{
-				
 				px += nx * surf_dist;
 				py += ny * surf_dist;
 				pz += nz * surf_dist;
@@ -257,20 +266,62 @@ avs_result_t avs_trace_ray(avs_t* avs, float px, float py, float pz, float nx, f
 struct avs_work_pair_t
 {
 	avs_index_t index;
-	float x, y, z;
+	avs_vec_t origin;
 	float side;
 };
+
+static bool avs_bb_contains(avs_bb_t &bound, avs_bb_t& other)
+{
+	return
+		bound.min.x <= other.min.x &&
+		bound.min.y <= other.min.y &&
+		bound.min.z <= other.min.z &&
+		bound.max.x > other.max.x &&
+		bound.max.y > other.max.y &&
+		bound.max.z > other.max.z;
+}
 
 void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z, float radius)
 {
 	std::vector<avs_work_pair_t> work_stack; // TODO: we could have an array of all used nodes, their size and position and just churn through it. For now though let's do it this way
 
-	int64_t min_x = static_cast<int64_t>(floorf(center_x - radius));
+	avs_bb_t roi_bb = {
+		{center_x - radius, center_y - radius, center_z - radius},
+		{center_x + radius, center_y + radius, center_z + radius},
+	};
+	avs_bb_t root_bb = {
+		avs->root_origin,
+		{avs->root_origin.x + avs->root_side, avs->root_origin.y + avs->root_side, avs->root_origin.z + avs->root_side},
+	};
+	while(!avs_bb_contains(root_bb, roi_bb))
+	{
+		avs_index_t old_node = avs->root_index;
+
+		avs->root_index = avs_alloc_node(avs);
+		avs_node_t* node = avs_get_node(avs, avs->root_index);
+		avs_node_init(avs, node);
+
+		node->brick_id = avs_alloc_brick(avs);
+		avs_brick_t* brick = avs_get_brick(avs, node->brick_id);
+		avs_brick_init(avs, brick);
+
+		// TODO: select in what direction to expand better
+		int octant = 0;
+		if(!avs->expand_up)
+		{
+			octant = 7;
+			avs->root_origin.x -= avs->root_side;
+			avs->root_origin.y -= avs->root_side;
+			avs->root_origin.z -= avs->root_side;
+		}
+		avs->root_side *= 2.0f;
+		avs->expand_up = !avs->expand_up;
+	}
 
 	avs_work_pair_t root =
 	{
 		avs->root_index,
-		0.0f, 0.0f, 0.0f,
+		avs->root_origin,
 		avs->root_side,
 	};
 	work_stack.push_back(root);
@@ -291,9 +342,9 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 				avs_work_pair_t child_work =
 				{
 					node->child_id[i],
-					(i & 1) ? work.x - half_side : work.x,
-					(i & 2) ? work.y - half_side : work.y,
-					(i & 4) ? work.z - half_side : work.z,
+					(i & 1) ? work.origin.x - half_side : work.origin.x,
+					(i & 2) ? work.origin.y - half_side : work.origin.y,
+					(i & 4) ? work.origin.z - half_side : work.origin.z,
 					half_side,
 				};
 				work_stack.push_back(child_work);
@@ -305,15 +356,15 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 		uint32_t i = 0;
 		for(uint32_t iz = 0; iz < AVS_BRICK_SIDE; ++iz)
 		{
-			float z = work.z + static_cast<float>(iz) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+			float z = work.origin.z + static_cast<float>(iz) * side / AVS_BRICK_SIDE; // TODO: do iteratively
 			float dz = z - center_z;
 			for(uint32_t iy = 0; iy < AVS_BRICK_SIDE; ++iy)
 			{
-				float y = work.y + static_cast<float>(iy) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+				float y = work.origin.y + static_cast<float>(iy) * side / AVS_BRICK_SIDE; // TODO: do iteratively
 				float dy = y - center_y;
 				for(uint32_t ix = 0; ix < AVS_BRICK_SIDE; ++ix)
 				{
-					float x = work.x + static_cast<float>(ix) * side / AVS_BRICK_SIDE; // TODO: do iteratively
+					float x = work.origin.x + static_cast<float>(ix) * side / AVS_BRICK_SIDE; // TODO: do iteratively
 					float dx = x - center_x;
 
 					float val = sqrtf(dx*dx + dy*dy + dz*dz) - radius;
