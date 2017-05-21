@@ -13,9 +13,10 @@ typedef uint32_t avs_index_t;
 struct avs_node_t
 {
 	avs_index_t child_id[8];
-	avs_index_t brick_id;
+	avs_index_t brick_id; // TODO: this should be a generalized layer interface
 };
 
+// TODO: this should all move into some layer interface, and be configurable at creation time
 #define AVS_BRICK_SIDE 32
 #define AVS_BRICK_SIZE (AVS_BRICK_SIDE * AVS_BRICK_SIDE * AVS_BRICK_SIDE)
 
@@ -48,5 +49,7 @@ struct avs_t
 	avs_index_t root_index;
 	float root_side;
 	avs_vec_t root_origin;
+
+	bool expand_up;
 };
 

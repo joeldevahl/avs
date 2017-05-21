@@ -20,7 +20,10 @@ static void avs_prop_down(avs_t* avs, avs_node_t* node, int cid)
 static void avs_prop_down_all(avs_t* avs, avs_node_t* node)
 {
 	for(int i = 0; i < 8; ++i)
-		avs_prop_down(avs, node, i);
+	{
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+			avs_prop_down(avs, node, i);
+	}
 }
 
 static void avs_prop_up(avs_t* avs, avs_node_t* node, int cid)
@@ -34,19 +37,23 @@ static void avs_prop_up(avs_t* avs, avs_node_t* node, int cid)
 static void avs_prop_up_all(avs_t* avs, avs_node_t* node)
 {
 	for(int i = 0; i < 8; ++i)
-		avs_prop_up(avs, node, i);
+	{
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+			avs_prop_up(avs, node, i);
+	}
 }
 
-static void avs_refine(avs_t* avs, avs_node_t* node)
+static void avs_refine_all(avs_t* avs, avs_node_t* node)
 {
 	for(int i = 0; i < 8; ++i)
 	{
-		assert(node->child_id[i] == AVS_INVALID_INDEX);
-		node->child_id[i] = avs->free_nodes.back();
-		avs->free_nodes.pop_back();
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+		{
+			node->child_id[i] = avs->free_nodes.back();
+			avs->free_nodes.pop_back();
+			avs_prop_down(avs, node, i);
+		}
 	}
-
-	avs_prop_down_all(avs, node);
 }
 
 static void avs_flatten(avs_t* avs, avs_node_t* node)
@@ -316,6 +323,10 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 		}
 		avs->root_side *= 2.0f;
 		avs->expand_up = !avs->expand_up;
+
+		node->child_id[octant] = old_node;
+		avs_prop_down_all(avs, node);
+		// TODO: reinitialize field (remove float max)
 	}
 
 	avs_work_pair_t root =
