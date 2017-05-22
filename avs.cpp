@@ -1,80 +1,5 @@
 #include "avs_internal.h"
 
-static bool avs_node_has_children(avs_node_t* node)
-{
-	assert(node != nullptr);
-	bool res = false;
-	for(int i = 0; i < 8; ++i)
-		res |= node->child_id[i] != AVS_INVALID_INDEX;
-	return res;
-}
-
-static void avs_prop_down(avs_t* avs, avs_node_t* node, int cid)
-{
-	assert(node->child_id[cid] != AVS_INVALID_INDEX);
-	avs_node_t& child_node = avs->nodes[node->child_id[cid]];
-
-	// TODO : upsample node brick data into child_node brick data
-}
-
-static void avs_prop_down_all(avs_t* avs, avs_node_t* node)
-{
-	for(int i = 0; i < 8; ++i)
-	{
-		if(node->child_id[i] != AVS_INVALID_INDEX)
-			avs_prop_down(avs, node, i);
-	}
-}
-
-static void avs_prop_up(avs_t* avs, avs_node_t* node, int cid)
-{
-	assert(node->child_id[cid] != AVS_INVALID_INDEX);
-	avs_node_t& child_node = avs->nodes[node->child_id[cid]];
-
-	// TODO : downsample child_nodes brick data into node brick data
-}
-
-static void avs_prop_up_all(avs_t* avs, avs_node_t* node)
-{
-	for(int i = 0; i < 8; ++i)
-	{
-		if(node->child_id[i] != AVS_INVALID_INDEX)
-			avs_prop_up(avs, node, i);
-	}
-}
-
-static void avs_refine_all(avs_t* avs, avs_node_t* node)
-{
-	for(int i = 0; i < 8; ++i)
-	{
-		if(node->child_id[i] != AVS_INVALID_INDEX)
-		{
-			node->child_id[i] = avs->free_nodes.back();
-			avs->free_nodes.pop_back();
-			avs_prop_down(avs, node, i);
-		}
-	}
-}
-
-static void avs_flatten(avs_t* avs, avs_node_t* node)
-{
-	for(int i = 0; i < 8; ++i)
-	{
-		avs_node_t& child_node = avs->nodes[node->child_id[i]];
-
-		// TODO: recurively flattern
-	}
-
-	avs_prop_up_all(avs, node);
-
-	for(int i = 0; i < 8; ++i)
-	{
-		assert(node->child_id[i] == AVS_INVALID_INDEX);
-		node->child_id[i] = avs->free_nodes.back();
-		avs->free_nodes.pop_back();
-	}
-}
-
 static avs_index_t avs_alloc_node(avs_t* avs)
 {
 	if (avs->free_nodes.size() == 0)
@@ -138,6 +63,102 @@ static void avs_brick_init(avs_t* avs, avs_brick_t* brick)
 {
 	for(int i = 0; i < AVS_BRICK_SIZE; ++i)
 		brick->data[i] = FLT_MAX;
+}
+
+static bool avs_node_has_children(avs_node_t* node)
+{
+	assert(node != nullptr);
+	bool res = false;
+	for(int i = 0; i < 8; ++i)
+		res |= node->child_id[i] != AVS_INVALID_INDEX;
+	return res;
+}
+
+static void avs_prop_down(avs_t* avs, avs_node_t* node, int cid)
+{
+	assert(node->child_id[cid] != AVS_INVALID_INDEX);
+	avs_node_t* child_node = avs_get_node(avs, node->child_id[cid]);
+
+	avs_brick_t* child_brick = avs_get_brick(avs, child_node->brick_id);
+	avs_brick_t* parent_brick = avs_get_brick(avs, node->brick_id);
+
+	uint32_t i = 0;
+	for(uint32_t iz = 0; iz < AVS_BRICK_SIDE; ++iz)
+	{
+		for(uint32_t iy = 0; iy < AVS_BRICK_SIDE; ++iy)
+		{
+			for(uint32_t ix = 0; ix < AVS_BRICK_SIDE; ++ix)
+			{
+				// TODO: the actual upsampling
+				// child_brick->data[i] = ...;
+				++i;
+			}
+		}
+	}
+}
+
+static void avs_prop_down_all(avs_t* avs, avs_node_t* node)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+			avs_prop_down(avs, node, i);
+	}
+}
+
+static void avs_prop_up(avs_t* avs, avs_node_t* node, int cid)
+{
+	assert(node->child_id[cid] != AVS_INVALID_INDEX);
+	avs_node_t& child_node = avs->nodes[node->child_id[cid]];
+
+	// TODO : downsample child_nodes brick data into node brick data
+}
+
+static void avs_prop_up_all(avs_t* avs, avs_node_t* node)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+			avs_prop_up(avs, node, i);
+	}
+}
+
+static void avs_refine_all(avs_t* avs, avs_node_t* node)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		if(node->child_id[i] != AVS_INVALID_INDEX)
+		{
+			node->child_id[i] = avs->free_nodes.back();
+			avs->free_nodes.pop_back();
+			avs_prop_down(avs, node, i);
+		}
+	}
+}
+
+static void avs_flatten(avs_t* avs, avs_node_t* node)
+{
+	for(int i = 0; i < 8; ++i)
+	{
+		avs_node_t& child_node = avs->nodes[node->child_id[i]];
+
+		// TODO: recurively flattern
+	}
+
+	avs_prop_up_all(avs, node);
+
+	for(int i = 0; i < 8; ++i)
+	{
+		assert(node->child_id[i] == AVS_INVALID_INDEX);
+		node->child_id[i] = avs->free_nodes.back();
+		avs->free_nodes.pop_back();
+	}
+}
+
+static void avs_node_normalize(avs_t* avs, avs_node_t* node)
+{
+	avs_brick_t* brick = avs_get_brick(avs, node->brick_id);
+	// TODO: normalize brick data
 }
 
 avs_result_t avs_create(const avs_create_info_t* create_info, avs_t** out_avs)
@@ -296,10 +317,12 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 		{center_x - radius, center_y - radius, center_z - radius},
 		{center_x + radius, center_y + radius, center_z + radius},
 	};
+
 	avs_bb_t root_bb = {
 		avs->root_origin,
 		{avs->root_origin.x + avs->root_side, avs->root_origin.y + avs->root_side, avs->root_origin.z + avs->root_side},
 	};
+
 	while(!avs_bb_contains(root_bb, roi_bb))
 	{
 		avs_index_t old_node = avs->root_index;
@@ -326,7 +349,7 @@ void avs_paint_sphere(avs_t* avs, float center_x, float center_y, float center_z
 
 		node->child_id[octant] = old_node;
 		avs_prop_down_all(avs, node);
-		// TODO: reinitialize field (remove float max)
+		avs_node_normalize(avs, node);
 	}
 
 	avs_work_pair_t root =
